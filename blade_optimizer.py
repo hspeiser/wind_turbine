@@ -64,9 +64,9 @@ def mechanical_power_25mph(R_inch, lambda_val, alpha_deg,
 
 def twist_distribution_induction(R_inch, alpha_deg, lambda_val,
                                  induction_a=0.3,
-                                 root_fraction=0.3, n_stations=6):
+                                 hub_radius_inch=0.5, n_stations=6):
     """
-    Compute twist distribution from root_fraction*R_inch to R_inch,
+    Compute twist distribution from a fixed hub radius (0.5 inches) to total radius R_inch,
     ignoring swirl induction but factoring the induction for 'effective speed.'
     We'll treat the rotor as if it runs at λ = (tip speed)/( (1-a)*V ).
     So local inflow angle is still φ(r)=arctan(R/(λ*r)), i.e. ignoring swirl.
@@ -77,14 +77,14 @@ def twist_distribution_induction(R_inch, alpha_deg, lambda_val,
     import numpy as np
 
     R_m = R_inch * 0.0254
-    r_root = root_fraction * R_m
+    r_root = hub_radius_inch * 0.0254  # Fixed hub radius in meters
     r_vals = np.linspace(r_root, R_m, n_stations)
 
     twist_deg = []
     alpha_opt = alpha_deg
     for rr in r_vals:
         # local inflow angle in degrees
-        phi_deg = math.degrees( math.atan( R_m / (lambda_val * rr ) ) )
+        phi_deg = math.degrees(math.atan(R_m / (lambda_val * rr)))
         # pitch = φ - alpha
         beta = phi_deg - alpha_opt
         twist_deg.append(beta)
@@ -92,12 +92,20 @@ def twist_distribution_induction(R_inch, alpha_deg, lambda_val,
     return r_vals, twist_deg
 
 if __name__ == "__main__":
-
-    # We'll do a parameter sweep over alpha=4..8, λ=4..7, R=2..3 in
-    alpha_list = [4,5,6,7,8]
-    lambda_list = [4,5,6,7]
-    R_inch_vals = np.arange(2.0, 3.001, 0.25)  # e.g. 2.0,2.25,2.5,2.75,3.0
-
+    # Fixed parameters
+    hub_radius_inch = 0.5
+    min_blade_length = 0.5  # Minimum blade length in inches
+    max_blade_length = 2.5  # Maximum blade length in inches
+    
+    # Parameter ranges for sweep
+    alpha_list = [4, 5, 6, 7, 8]
+    lambda_list = [4, 5, 6, 7]
+    
+    # Total radius values (hub + blade)
+    min_radius = hub_radius_inch + min_blade_length  # 1.0 inch
+    max_radius = hub_radius_inch + max_blade_length  # 3.0 inches
+    R_inch_vals = np.arange(min_radius, max_radius + 0.001, 0.25)  # 1.0, 1.25, ..., 3.0
+    
     # Induction factor
     a = 0.30
 
@@ -105,12 +113,14 @@ if __name__ == "__main__":
     for alpha_deg in alpha_list:
         for lam in lambda_list:
             for r_in in R_inch_vals:
+                blade_length = r_in - hub_radius_inch
                 p_mech, cp_val = mechanical_power_25mph(r_in, lam, alpha_deg,
-                                                        induction_a=a)
+                                                      induction_a=a)
                 results.append({
                    'alpha': alpha_deg,
                    'lambda': lam,
                    'R_in': r_in,
+                   'blade_length': blade_length,
                    'P_mech_W': p_mech,
                    'cp': cp_val
                 })
@@ -120,19 +130,21 @@ if __name__ == "__main__":
     print("TOP 10 combos:")
     for i in range(10):
         r = results_sorted[i]
-        print(f"{i+1}) alpha={r['alpha']:.1f}°, λ={r['lambda']}, R={r['R_in']:.2f}\" => "
+        print(f"{i+1}) alpha={r['alpha']:.1f}°, λ={r['lambda']}, "
+              f"R_total={r['R_in']:.2f}\" (blade={r['blade_length']:.2f}\") => "
               f"P_mech={r['P_mech_W']:.2f} W, CP={r['cp']:.3f}")
 
     best = results_sorted[0]
-    alpha_star  = best['alpha']
+    alpha_star = best['alpha']
     lambda_star = best['lambda']
-    R_star_in   = best['R_in']
-    P_star_W    = best['P_mech_W']
+    R_star_in = best['R_in']
+    blade_length_star = best['blade_length']
+    P_star_W = best['P_mech_W']
 
     print("\nBEST param set =>", best)
 
     rvals_m, twist_deg = twist_distribution_induction(R_star_in, alpha_star, lambda_star,
-                                                      induction_a=a)
-    print("\nTwist distribution from ~30% radius to tip:")
+                                                    induction_a=a, hub_radius_inch=hub_radius_inch)
+    print(f"\nTwist distribution from hub (radius={hub_radius_inch}\") to tip:")
     for (rr, td) in zip(rvals_m, twist_deg):
         print(f"  r={rr*1000:.1f} mm, pitch={td:.2f}°")
